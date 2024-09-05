@@ -1,0 +1,7 @@
+# code: language=ansible
+---
+
+license_storage: /var/1C/licenses
+
+license_validate: false
+license_info: false

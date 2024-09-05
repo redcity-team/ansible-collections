@@ -1,0 +1,70 @@
+---
+
+- name: Init ring
+  ansible.builtin.import_tasks: ring.yml
+
+- name: Read license data
+  when: license_ring is defined
+  block:
+
+    - name: Execute list command
+      ansible.builtin.command:
+        cmd: "{{ license_ring.path }} license list \
+          --path {{ license_storage }}"
+      changed_when: false
+      register: _results
+
+    - name: Set license data
+      ansible.builtin.set_fact:
+        license_data: "{{
+          license_data | default([]) +
+          [{'name': item | regex_search('^[0-9|-]*'), 'file': item | regex_search('(?<=\")[^\"]+(?=\")')}]
+          }}"
+      loop: "{{ _results.stdout_lines | list }}"
+      loop_control:
+        label: "{{ item | regex_search('^[0-9|-]*') }}"
+
+    - name: Read license info
+      when: license_info
+      block:
+
+        - name: Execute info command
+          ansible.builtin.command:
+            cmd: "{{ license_ring.path }} license info \
+              --name {{ item.name }} \
+              --path {{ license_storage }}"
+          changed_when: false
+          register: _results
+          loop: "{{ license_data }}"
+          loop_control:
+            label: "{{ item.name }}"
+
+        - name: Set license info
+          ansible.builtin.set_fact:
+            license_data: "{{ license_data | default([]) | map('combine', item[0], {'info': item[1].stdout}) }}"
+          loop: "{{ license_data | zip(_results.results) }}"
+          loop_control:
+            label: "{{ item[0].name }}"
+
+    - name: Validate license
+      when: license_validate
+      block:
+
+        - name: Execute validate command
+          ansible.builtin.command:
+            cmd: "{{ license_ring.path }} license validate \
+              --name {{ item.name }} \
+              --path {{ license_storage }}"
+          changed_when: false
+          register: _results
+          loop: "{{ license_data }}"
+          loop_control:
+            label: "{{ item.name }}"
+
+        - name: Set license info
+          ansible.builtin.set_fact:
+            license_data: "{{ license_data | default([]) |
+              map('combine', item[0], {'validate': {'result': item[1].rc, 'msg': item[1].stdout}}) }}"
+          loop: "{{ license_data | zip(_results.results) }}"
+          loop_control:
+            label: "{{ item[0].name }}"
